@@ -16,7 +16,12 @@ router.get('/geojson', async (req, res) => {
 
 		// Check if file exists
 		if (!fs.existsSync(filePath)) {
-			return res.status(404).json({ message: 'GeoJSON file not found' });
+			console.error(`GeoJSON file not found at: ${filePath}`);
+			return res.status(404).json({ 
+				message: 'GeoJSON file not found',
+				path: filePath,
+				currentDir: __dirname
+			});
 		}
 
 		// Read and send the file
@@ -79,3 +84,4 @@ router.get('/gsdp/:year', async (req, res) => {
 });
 
 export default router;
+
