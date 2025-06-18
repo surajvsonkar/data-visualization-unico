@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import dataRoutes from './routes/data.js';
 import tagRoutes from './routes/tags.js';
+import cors from 'cors'
 
 dotenv.config();
 
