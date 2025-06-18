@@ -3,34 +3,95 @@ import { loadGsdpData } from '../utils/dataLoader.js';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import https from 'https';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const router = express.Router();
 
+// Cache for GeoJSON data
+let cachedGeoJson = null;
+
+// Function to fetch GeoJSON from a public URL
+const fetchGeoJsonFromUrl = () => {
+  return new Promise((resolve, reject) => {
+    // URL to a public GeoJSON file for India states
+    const geoJsonUrl = 'https://raw.githubusercontent.com/geohacker/india/master/states/india_state.geojson';
+    
+    https.get(geoJsonUrl, (response) => {
+      if (response.statusCode !== 200) {
+        reject(new Error(`Failed to download: ${response.statusCode} ${response.statusMessage}`));
+        return;
+      }
+      
+      let data = '';
+      
+      response.on('data', (chunk) => {
+        data += chunk;
+      });
+      
+      response.on('end', () => {
+        try {
+          // Validate that it's valid JSON
+          const jsonData = JSON.parse(data);
+          resolve(jsonData);
+        } catch (error) {
+          reject(error);
+        }
+      });
+    }).on('error', (error) => {
+      reject(error);
+    });
+  });
+};
+
 // GET /api/data/geojson - Get India states GeoJSON
 router.get('/geojson', async (req, res) => {
-	try {
-		const filePath = path.join(__dirname, '../data/india-states.json');
-
-		// Check if file exists
-		if (!fs.existsSync(filePath)) {
-			console.error(`GeoJSON file not found at: ${filePath}`);
-			return res.status(404).json({ 
-				message: 'GeoJSON file not found',
-				path: filePath,
-				currentDir: __dirname
-			});
-		}
-
-		// Read and send the file
-		const geoJsonData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-		res.json(geoJsonData);
-	} catch (error) {
-		console.error('Error fetching GeoJSON data:', error);
-		res.status(500).json({ message: 'Server error', error: error.message });
-	}
+    try {
+        // Try to read from local file first
+        const filePath = path.join(__dirname, '../data/india-states.json');
+        
+        // If we have cached data, return it
+        if (cachedGeoJson) {
+            return res.json(cachedGeoJson);
+        }
+        
+        // Try to read from local file
+        if (fs.existsSync(filePath)) {
+            try {
+                const geoJsonData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+                cachedGeoJson = geoJsonData; // Cache the data
+                return res.json(geoJsonData);
+            } catch (fileError) {
+                console.error('Error reading local GeoJSON file:', fileError);
+                // Continue to fetch from URL if local file read fails
+            }
+        }
+        
+        // If local file doesn't exist or can't be read, fetch from URL
+        console.log('Local GeoJSON file not found, fetching from URL');
+        const geoJsonData = await fetchGeoJsonFromUrl();
+        cachedGeoJson = geoJsonData; // Cache the data
+        
+        // Try to save to local file for future use
+        try {
+            const dataDir = path.dirname(filePath);
+            if (!fs.existsSync(dataDir)) {
+                fs.mkdirSync(dataDir, { recursive: true });
+            }
+            fs.writeFileSync(filePath, JSON.stringify(geoJsonData, null, 2));
+            console.log('Saved GeoJSON to local file for future use');
+        } catch (saveError) {
+            console.error('Could not save GeoJSON to local file:', saveError);
+            // Continue even if saving fails
+        }
+        
+        res.json(geoJsonData);
+    } catch (error) {
+        console.error('Error fetching GeoJSON data:', error);
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
 });
 
 // GET /api/data/gsdp/years - Get all available years
@@ -84,4 +145,5 @@ router.get('/gsdp/:year', async (req, res) => {
 });
 
 export default router;
+
 
